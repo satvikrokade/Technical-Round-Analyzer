@@ -131,4 +131,5 @@ def evaluate(req: EvaluationRequest):
 
 # Serve static frontend files
 frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend')
-app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+if os.path.exists(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

@@ -1,21 +1,31 @@
 {
-    "functions": {
-        "backend/main.py": {
-            "maxDuration": 10
+    "version": 2,
+    "builds": [
+        {
+            "src": "backend/main.py",
+            "use": "@vercel/python"
+        },
+        {
+            "src": "frontend/**",
+            "use": "@vercel/static"
         }
-    },
-    "rewrites": [
+    ],
+    "routes": [
         {
-            "source": "/api/(.*)",
-            "destination": "/backend/main.py"
+            "src": "/api/(.*)",
+            "dest": "backend/main.py"
         },
         {
-            "source": "/",
-            "destination": "/frontend/index.html"
+            "src": "/",
+            "dest": "frontend/index.html"
         },
         {
-            "source": "/(script.js|style.css)",
-            "destination": "/frontend/$1"
+            "src": "/(script.js|style.css)",
+            "dest": "frontend/$1"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "frontend/$1"
         }
     ]
 }

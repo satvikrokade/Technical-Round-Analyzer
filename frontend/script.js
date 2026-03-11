@@ -1,3 +1,14 @@
+// Register Service Worker for Offline Availability
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then(reg => {
+            console.log('Service Worker Registered');
+        }).catch(err => {
+            console.log('Service Worker Failed:', err);
+        });
+    });
+}
+
 const questionData = [
     { q: "> What is the output of the following C++ code?\n\nint sum = 0;\nfor(int i = 1; i <= 5; i++)\n{\n    sum += i;\n}\ncout << sum;", t: "Loop Logic" },
     { q: "> What is the output of this nested loop sequence?\n\nint count = 0;\nfor(int i = 1; i <= 3; i++)\n{\n    for(int j = 1; j <= 2; j++)\n    {\n        count++;\n    }\n}\ncout << count;", t: "Nested Loops" },
@@ -119,6 +130,107 @@ function submitAnswer() {
     } else {
         finishInterview();
     }
+}
+
+// Local AI Evaluation Fallback
+function localEvaluate(userAnswers) {
+    const trainingData = [
+        { text: "15", label: "Excellent" },
+        { text: "The output is 15 because 1+2+3+4+5=15", label: "Excellent" },
+        { text: "I think it is 15", label: "Good" },
+        { text: "10", label: "Poor" },
+        { text: "6", label: "Excellent" },
+        { text: "The output is 6 because the outer loop runs 3 times and the inner loop runs 2 times", label: "Excellent" },
+        { text: "6 stars", label: "Good" },
+        { text: "5", label: "Poor" },
+        { text: "10", label: "Excellent" },
+        { text: "10 because it evaluates 4+3+2+1+0", label: "Excellent" },
+        { text: "It returns 10", label: "Good" },
+        { text: "4", label: "Poor" },
+        { text: "2", label: "Excellent" },
+        { text: "2 because 17 divided by 5 leaves a remainder of 2", label: "Excellent" },
+        { text: "The remainder is 2", label: "Good" },
+        { text: "17", label: "Poor" },
+        { text: "1", label: "Excellent" },
+        { text: "1 because 101 AND 011 is 001", label: "Excellent" },
+        { text: "It equals 1", label: "Good" },
+        { text: "2", label: "Poor" },
+        { text: "12", label: "Excellent" },
+        { text: "12 because a++ evaluates to 5, then a is 6, then ++a is 7, 5+7 is 12", label: "Excellent" },
+        { text: "Its 12", label: "Good" },
+        { text: "10", label: "Poor" },
+        { text: "20", label: "Excellent" },
+        { text: "20 the sum of the array is 2+4+6+8", label: "Excellent" },
+        { text: "It is 20", label: "Good" },
+        { text: "24", label: "Poor" },
+        { text: "10", label: "Excellent" },
+        { text: "10 because 1+2+3+4=10", label: "Excellent" },
+        { text: "It results in 10", label: "Good" },
+        { text: "4", label: "Poor" },
+        { text: "3", label: "Excellent" },
+        { text: "3 because division of integers truncates the decimal", label: "Excellent" },
+        { text: "It's 3", label: "Good" },
+        { text: "3.33", label: "Poor" }
+    ];
+
+    return userAnswers.map((ans, idx) => {
+        const ans_text = ans.trim().toLowerCase();
+
+        if (!ans_text || ans_text.length < 5) {
+            return {
+                score: "Poor",
+                feedback: "Response was exceptionally short or empty. Please elaborate more next time.",
+                confidence: 95.0,
+                metrics: { "Excellent": 5, "Good": 10, "Average": 15, "Poor": 70 }
+            };
+        }
+
+        // Simple Jaccard Similarity / Keyword Match
+        let bestMatch = { label: "Poor", score: 0 };
+
+        trainingData.forEach(item => {
+            const itemText = item.text.toLowerCase();
+            const words1 = new Set(ans_text.split(/\W+/));
+            const words2 = new Set(itemText.split(/\W+/));
+            const intersection = new Set([...words1].filter(x => words2.has(x)));
+            const union = new Set([...words1, ...words2]);
+            const similarity = intersection.size / union.size;
+
+            if (similarity > bestMatch.score) {
+                bestMatch = { label: item.label, score: similarity };
+            }
+        });
+
+        // Heuristic: if correct answer (number) is present, boost score
+        const correctAnswers = ["15", "6", "10", "2", "1", "12", "6", "20", "10", "3"];
+        if (ans_text.includes(correctAnswers[idx])) {
+            if (ans_text.length > 20) bestMatch.label = "Excellent";
+            else if (bestMatch.label === "Poor") bestMatch.label = "Good";
+        }
+
+        let feedback = "";
+        let metrics = {};
+        if (bestMatch.label === "Excellent") {
+            feedback = "Great depth and accurate use of technical terms. (Locally Processed)";
+            metrics = { "Excellent": 85, "Good": 10, "Average": 3, "Poor": 2 };
+        } else if (bestMatch.label === "Good") {
+            feedback = "Solid answer, hits the main points but lacks deep technical detail. (Locally Processed)";
+            metrics = { "Excellent": 20, "Good": 70, "Average": 8, "Poor": 2 };
+        } else if (bestMatch.label === "Average") {
+            feedback = "Basic understanding shown, but misses key technical concepts. (Locally Processed)";
+            metrics = { "Excellent": 5, "Good": 15, "Average": 60, "Poor": 20 };
+        } else {
+            feedback = "The answer is incorrect, vague, or fundamentally lacking detail. (Locally Processed)";
+            metrics = { "Excellent": 2, "Good": 8, "Average": 10, "Poor": 80 };
+        }
+
+        return {
+            score: bestMatch.label,
+            feedback: feedback,
+            confidence: Math.round((0.7 + Math.random() * 0.2) * 100),
+            metrics: metrics
+        };
+    });
 }
 
 // Simulate Terminal logs
@@ -421,11 +533,40 @@ async function finishInterview() {
 
     } catch (error) {
         console.error('Error evaluating answers:', error);
-        alert('CRITICAL ERROR: AI server offline or unreachable.');
-        switchScreen(loadingScreen, startScreen);
-        currentQuestionIndex = -1;
-        answers = [];
-        updateProgress();
+        console.log('Switching to Local Neural Node...');
+
+        const localLogs = [
+            "> CAUTION: AI Server Unreachable.",
+            "> Re-routing to Local Node...",
+            "> Deploying backup evaluation heuristics...",
+            "> Offline processing active."
+        ];
+
+        localLogs.forEach((log, index) => {
+            setTimeout(() => {
+                const p = document.createElement('p');
+                p.style.color = 'var(--score-good)';
+                p.innerText = log;
+                terminalLogs.appendChild(p);
+            }, 600 + (index * 400));
+        });
+
+        const evaluations = localEvaluate(answers);
+
+        // Ensure delay for artificial feel of processing
+        setTimeout(() => {
+            renderScorecard(evaluations);
+            renderRadarChart(evaluations);
+            renderDoughnutChart(evaluations);
+            renderSVMChart(evaluations);
+            switchScreen(loadingScreen, scorecardScreen);
+
+            // Show toast/alert that we are in offline mode
+            setTimeout(() => {
+                const status = document.getElementById('statusText');
+                status.innerHTML = '<span style="color:var(--score-good)">OFFLINE MODE ACTIVE • Local Processing</span>';
+            }, 1000);
+        }, 4000);
     }
 }
 
